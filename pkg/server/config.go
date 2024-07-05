@@ -9,8 +9,9 @@ import (
 )
 
 type Config struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	StoragePath string `json:"storage_path"`
 }
 
 func ReadConfigFromEnv() *Config {
@@ -36,8 +37,15 @@ func ReadConfigFromEnv() *Config {
 		parsedPort = 8080
 	}
 
+	storagePath, exists := os.LookupEnv("storage_path")
+
+	if !exists {
+		storagePath = "/tmp"
+	}
+
 	return &Config{
-		Host: host,
-		Port: parsedPort,
+		Host:        host,
+		Port:        parsedPort,
+		StoragePath: storagePath,
 	}
 }

@@ -1,8 +1,7 @@
 package storage
 
 import (
-	"bufio"
-	"math"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -127,7 +126,7 @@ func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
 
 	// Save the file by renaming the temporary file
 	err := os.Rename(tmpFilePath, filePath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return err
 	}
 
@@ -151,7 +150,7 @@ func (s *Storage) saveFile(hash string, data []byte) error {
 	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	err = os.WriteFile(filePath, data, 0644)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return err
 	}
 	return nil
@@ -189,11 +188,6 @@ func (s *Storage) Read(hash string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
-	stat, err := file.Stat()
-
-	if err != nil {
-		return "", err
-	}
 
 	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
 
@@ -208,19 +202,10 @@ func (s *Storage) Read(hash string) (string, error) {
 	}
 	defer temFile.Close()
 
-	// Read the file and write it to the temporary file
-	// The buffer size is computed for each file to check if file size is lower than the max buffer size
-	// to avoid getting buffer filled like this: [bytes, ... 0, 0, 0, 0, ...]
-	bufferSize := int(math.Min(float64(s.bufferSize), float64(stat.Size())))
-	buffer := make([]byte, bufferSize)
-	bufferedReader := bufio.NewReader(file)
+	_, err = io.Copy(temFile, file)
 
-	for {
-		_, err := bufferedReader.Read(buffer)
-		if err != nil {
-			break
-		}
-		temFile.Write(buffer)
+	if err != nil {
+		return "", err
 	}
 
 	mux.Unlock()
