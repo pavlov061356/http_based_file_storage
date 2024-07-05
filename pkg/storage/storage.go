@@ -9,8 +9,6 @@ import (
 	"github.com/pavlov061356/http_based_file_storage/internal/helpers"
 )
 
-const maxBufferSize = 1024
-
 // Storer is an interface that defines the methods for file storage
 type Storer interface {
 	// Exists checks if a file with the given hash exists
@@ -80,9 +78,8 @@ func NewStorage(basePath string) (Storer, error) {
 	}
 	// Return a new Storage instance
 	return &Storage{
-		basePath:   basePath,
-		muxMap:     make(map[string]*sync.Mutex),
-		bufferSize: maxBufferSize,
+		basePath: basePath,
+		muxMap:   make(map[string]*sync.Mutex),
 	}, nil
 }
 
