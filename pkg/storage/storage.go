@@ -1,12 +1,16 @@
 package storage
 
 import (
+	"bufio"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/pavlov061356/http_based_file_storage/internal/helpers"
 )
+
+const maxBufferSize = 1024
 
 // Storer is an interface that defines the methods for file storage
 type Storer interface {
@@ -25,7 +29,7 @@ type Storer interface {
 	// Returns an error if there was any
 	SaveFileFromTemp(hash string, tmpFilePath string) error
 
-	SaveFile(hash string, data []byte) error
+	saveFile(hash string, data []byte) error
 
 	// Read reads a file from the storage
 	//
@@ -47,6 +51,8 @@ type Storage struct {
 	// basePath is the base directory where the files are stored.
 	basePath string
 
+	// TODO: could be made configurable
+	bufferSize int
 	// muxMap is a map of mutexes used to synchronize file access.
 	// The key is the hash of the file, and the value is the mutex associated with that hash.
 	muxMap map[string]*sync.Mutex
@@ -75,21 +81,31 @@ func NewStorage(basePath string) (Storer, error) {
 	}
 	// Return a new Storage instance
 	return &Storage{
-		basePath: basePath,
-		muxMap:   make(map[string]*sync.Mutex),
+		basePath:   basePath,
+		muxMap:     make(map[string]*sync.Mutex),
+		bufferSize: maxBufferSize,
 	}, nil
 }
 
+// Exists checks if a file with the given hash exists in the storage.
+//
+// hash: the hash of the file to check.
+//
+// Returns a boolean indicating if the file exists and an error if there was any.
 func (s *Storage) Exists(hash string) (bool, error) {
+	// Get the file path for the given hash
 	filePath := helpers.GetFilePath(s.basePath, hash)
 
+	// Check if the file exists
 	_, err := os.Stat(filePath)
 	if err != nil {
+		// If the file doesn't exist or there was an error while checking the file, return false and the error
 		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, err
 	}
+	// If the file exists, return true and no error
 	return true, nil
 }
 
@@ -111,14 +127,14 @@ func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
 
 	// Save the file by renaming the temporary file
 	err := os.Rename(tmpFilePath, filePath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
 	return nil
 }
 
-func (s *Storage) SaveFile(hash string, data []byte) error {
+func (s *Storage) saveFile(hash string, data []byte) error {
 	// Lock the mutex map to prevent concurrent access
 
 	filePath := helpers.GetFilePath(s.basePath, hash)
@@ -165,30 +181,52 @@ func (s *Storage) Read(hash string) (string, error) {
 		return "", os.ErrExist
 	}
 	mux.Lock()
-	// Read the file data
-	data, err := os.ReadFile(filePath)
+
+	file, err := os.Open(filePath)
+
 	if err != nil {
-		// If there was an error while reading the file, return the error
+		// If there was an error while opening the file, return the error
 		return "", err
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+
+	if err != nil {
+		return "", err
+	}
+
+	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
+
+	if err != nil {
+		return "", err
+	}
+	tempFilePath := filepath.Join(tempDir, hash)
+
+	temFile, err := os.Create(tempFilePath)
+	if err != nil {
+		return "", err
+	}
+	defer temFile.Close()
+
+	// Read the file and write it to the temporary file
+	// The buffer size is computed for each file to check if file size is lower than the max buffer size
+	// to avoid getting buffer filled like this: [bytes, ... 0, 0, 0, 0, ...]
+	bufferSize := int(math.Min(float64(s.bufferSize), float64(stat.Size())))
+	buffer := make([]byte, bufferSize)
+	bufferedReader := bufio.NewReader(file)
+
+	for {
+		_, err := bufferedReader.Read(buffer)
+		if err != nil {
+			break
+		}
+		temFile.Write(buffer)
 	}
 
 	mux.Unlock()
 
-	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
-
 	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
-	if err != nil {
-		return "", err
-	}
-	// Create a temporary file with the same hash name
-	tempFilePath := filepath.Join(tempDir, hash)
-	err = os.WriteFile(tempFilePath, data, 0511)
-
-	// If there was an error while writing the temporary file, return the error
-	if err != nil {
-		return "", err
-	}
 	// Return the path to the temporary file
 	return tempFilePath, nil
 }

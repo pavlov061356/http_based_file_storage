@@ -42,7 +42,7 @@ func TestStorageSaveFile(t *testing.T) {
 	assert.NotNil(t, storage, "Storage instance is nil")
 
 	// Save a file with a hash that doesn't exist in the storage yet.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err, "Error while saving file with a new hash")
 
 	// Assert that the file was saved successfully.
@@ -51,7 +51,7 @@ func TestStorageSaveFile(t *testing.T) {
 	assert.NoError(t, err, "File was not saved successfully")
 
 	// Save a file with a hash that already exists in the storage.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err, "Error while saving file with an existing hash")
 
 	_, err = os.Stat(filePath)
@@ -86,7 +86,7 @@ func TestConcurrentStorageSaveFile(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Call SaveFile with a fixed hash and data.
-			err := storage.SaveFile("hash", []byte("data"))
+			err := storage.saveFile("hash", []byte("data"))
 
 			// Assert that no error occurs during the SaveFile call.
 			assert.NoError(t, err)
@@ -117,7 +117,7 @@ func TestStorageExists(t *testing.T) {
 	assert.NotNil(t, storage, "Storage instance is nil")
 
 	// Save a file with a hash that doesn't exist in the storage yet.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err, "Error while saving file with a new hash")
 
 	// Check if the file exists using the Exists method.
@@ -144,7 +144,7 @@ func TestStorageDelete(t *testing.T) {
 	assert.NotNil(t, storage)
 
 	// Save a file with a hash.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err)
 
 	// Delete the file.
@@ -196,7 +196,7 @@ func TestStorageExistsOnDeletedFile(t *testing.T) {
 	assert.NotNil(t, storage)
 
 	// Save a file with a hash.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err)
 
 	// Delete the file.
@@ -223,7 +223,7 @@ func TestStorageRead(t *testing.T) {
 	assert.NotNil(t, storage)
 
 	// Save a file with a hash.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err)
 
 	// Read the file using the Read method.
@@ -256,7 +256,7 @@ func TestStorageReadOnDeletedFile(t *testing.T) {
 	assert.NotNil(t, storage)
 
 	// Save a file with a hash.
-	err = storage.SaveFile("hash", []byte("data"))
+	err = storage.saveFile("hash", []byte("data"))
 	assert.NoError(t, err)
 
 	// Delete the file.
