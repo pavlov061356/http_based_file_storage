@@ -12,7 +12,7 @@ import (
 func GetFilePath(basePath string, hash string) string {
 	// The file path is constructed by concatenating the base path,
 	// the first two characters of the hash value, and the complete hash value.
-	return filepath.Join(basePath, "store", hash[0:2], hash)
+	return filepath.Join(basePath, "store", hash[:2], hash)
 }
 
 // GetFileParentPath generates the parent directory path for a given hash value.

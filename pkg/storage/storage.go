@@ -48,8 +48,6 @@ type Storage struct {
 	// basePath is the base directory where the files are stored.
 	basePath string
 
-	// TODO: could be made configurable
-	bufferSize int
 	// muxMap is a map of mutexes used to synchronize file access.
 	// The key is the hash of the file, and the value is the mutex associated with that hash.
 	muxMap map[string]*sync.Mutex
@@ -120,9 +118,20 @@ func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
 	defer mux.Unlock()
 
 	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+	filePathParentDir := helpers.GetFileParentPath(s.basePath, hash)
+	err := os.MkdirAll(filePathParentDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	_, err = os.Stat(filePath)
+
+	if err == nil {
+		return os.ErrExist
+	}
 
 	// Save the file by renaming the temporary file
-	err := os.Rename(tmpFilePath, filePath)
+	err = os.Rename(tmpFilePath, filePath)
 	if err != nil {
 		return err
 	}

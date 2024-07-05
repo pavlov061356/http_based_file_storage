@@ -48,6 +48,10 @@ type HTTPFileStorageServer struct {
 	config *Config
 }
 
+type hash struct {
+	Hash string `uri:"hash" binding:"required"`
+}
+
 func (s *HTTPFileStorageServer) setupRouter() *gin.Engine {
 	r := gin.Default()
 	r.Use(gin.Recovery())
@@ -145,8 +149,12 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 				c.AbortWithError(500, fmt.Errorf("internal server error"))
 			}
 		}()
-		hash := c.Request.PathValue("hash")
-		filePath, err := s.storer.Read(hash)
+		var hash hash
+		if err := c.ShouldBindUri(&hash); err != nil {
+			c.JSON(400, gin.H{"msg": err.Error()})
+			return
+		}
+		filePath, err := s.storer.Read(hash.Hash)
 
 		if errors.Is(err, os.ErrNotExist) {
 			c.AbortWithError(404, fmt.Errorf("file not found"))
