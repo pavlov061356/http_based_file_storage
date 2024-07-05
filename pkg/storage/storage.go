@@ -1,5 +1,10 @@
 package storage
 
+import (
+	"errors"
+	"sync"
+)
+
 // Storer is an interface that defines the methods for file storage
 type Storer interface {
 	// Exists checks if a file with the given hash exists
@@ -30,4 +35,30 @@ type Storer interface {
 	//
 	// Returns an error if there was any
 	Delete(hash string) error
+}
+
+type Storage struct {
+	muxMap map[string]sync.Mutex
+}
+
+func NewStorage() Storer {
+	return &Storage{
+		muxMap: make(map[string]sync.Mutex),
+	}
+}
+
+func (s Storage) Exists(hash string) (bool, error) {
+	return false, errors.ErrUnsupported
+}
+
+func (s Storage) Save(hash string, tmpFilePath string) error {
+	return errors.ErrUnsupported
+}
+
+func (s Storage) Read(hash string) (string, error) {
+	return "", errors.ErrUnsupported
+}
+
+func (s Storage) Delete(hash string) error {
+	return errors.ErrUnsupported
 }
