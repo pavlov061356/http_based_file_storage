@@ -1,8 +1,8 @@
 package storage
 
 import (
-	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/pavlov061356/http_based_file_storage/internal/helpers"
@@ -100,24 +100,14 @@ func (s *Storage) Exists(hash string) (bool, error) {
 //
 // Returns an error if there was any
 func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
-	// Lock the mutex map to prevent concurrent access
-	s.muxMapLock.Lock()
-
-	// Get the mutex associated with the hash
-	mux, ok := s.muxMap[hash]
-	if !ok {
-		// If the mutex doesn't exist, create it
-		mux = &sync.Mutex{}
-		s.muxMap[hash] = mux
-	}
-
-	// Unlock the mutex map
-	s.muxMapLock.Unlock()
+	mux := createMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	filePath := helpers.GetFilePath(s.basePath, hash)
 	// Lock the mutex to prevent concurrent access to the file
 	mux.Lock()
 	defer mux.Unlock()
+
+	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	// Save the file by renaming the temporary file
 	err := os.Rename(tmpFilePath, filePath)
@@ -129,9 +119,23 @@ func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
 }
 
 func (s *Storage) SaveFile(hash string, data []byte) error {
+	// Lock the mutex map to prevent concurrent access
+
 	filePath := helpers.GetFilePath(s.basePath, hash)
-	err := os.WriteFile(filePath, data, 0511)
+	hashedFilePath := helpers.GetFileParentPath(s.basePath, hash)
+	err := os.MkdirAll(hashedFilePath, os.ModePerm)
 	if err != nil {
+		return err
+	}
+
+	mux := createMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+	mux.Lock()
+	defer mux.Unlock()
+
+	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
@@ -143,6 +147,9 @@ func (s *Storage) SaveFile(hash string, data []byte) error {
 //
 // Returns the path to the file and an error if there was any
 func (s *Storage) Read(hash string) (string, error) {
+
+	mux := createMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+
 	// Get the file path for the given hash
 	filePath := helpers.GetFilePath(s.basePath, hash)
 
@@ -155,9 +162,9 @@ func (s *Storage) Read(hash string) (string, error) {
 
 	// If the file doesn't exist, return nil
 	if !exists {
-		return "", nil
+		return "", os.ErrExist
 	}
-
+	mux.Lock()
 	// Read the file data
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -165,8 +172,17 @@ func (s *Storage) Read(hash string) (string, error) {
 		return "", err
 	}
 
+	mux.Unlock()
+
+	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
+
+	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+
+	if err != nil {
+		return "", err
+	}
 	// Create a temporary file with the same hash name
-	tempFilePath := fmt.Sprintf("%s/%s", os.TempDir(), hash)
+	tempFilePath := filepath.Join(tempDir, hash)
 	err = os.WriteFile(tempFilePath, data, 0511)
 
 	// If there was an error while writing the temporary file, return the error
@@ -174,7 +190,7 @@ func (s *Storage) Read(hash string) (string, error) {
 		return "", err
 	}
 	// Return the path to the temporary file
-	return filePath, nil
+	return tempFilePath, nil
 }
 
 // Delete deletes a file from the storage.
@@ -183,19 +199,7 @@ func (s *Storage) Read(hash string) (string, error) {
 //
 // Returns an error if there was any
 func (s *Storage) Delete(hash string) error {
-	// Lock the mutex map to prevent concurrent access
-	s.muxMapLock.Lock()
-
-	// Get the mutex associated with the hash
-	mux, ok := s.muxMap[hash]
-	if !ok {
-		// If the mutex doesn't exist, create it
-		mux = &sync.Mutex{}
-		s.muxMap[hash] = mux
-	}
-
-	// Unlock the mutex map
-	s.muxMapLock.Unlock()
+	mux := createMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	// Get the file path for the given hash
 	filePath := helpers.GetFilePath(s.basePath, hash)
@@ -203,12 +207,36 @@ func (s *Storage) Delete(hash string) error {
 	// Lock the mutex to prevent concurrent access to the file
 	mux.Lock()
 	defer mux.Unlock()
+	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	// Delete the file
 	err := os.Remove(filePath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
 	return nil
+}
+func deleteMutexMapEntry(muxMapLock *sync.Mutex, muxMap map[string]*sync.Mutex, hash string) {
+	muxMapLock.Lock()
+
+	// Delete the mutex associated with the hash
+	delete(muxMap, hash)
+
+	muxMapLock.Unlock()
+}
+
+func createMutexMapEntry(muxMapLock *sync.Mutex, muxMap map[string]*sync.Mutex, hash string) *sync.Mutex {
+	muxMapLock.Lock()
+
+	// Get the mutex associated with the hash
+	mux, ok := muxMap[hash]
+	if !ok {
+		// If the mutex doesn't exist, create it
+		mux = &sync.Mutex{}
+		muxMap[hash] = mux
+	}
+
+	muxMapLock.Unlock()
+	return mux
 }
