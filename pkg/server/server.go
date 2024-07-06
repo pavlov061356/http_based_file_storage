@@ -23,7 +23,6 @@ import (
 	"github.com/pavlov061356/http_based_file_storage/pkg/storage"
 )
 
-// TODO: graceful shutdown with context
 // TODO: additional hash check on POST with user provided hashing algs
 
 type FileStorageServer interface {
