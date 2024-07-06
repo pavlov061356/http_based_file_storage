@@ -30,12 +30,25 @@ func GetFileParentPath(basePath string, hash string) string {
 	return filepath.Join(basePath, "store", hash[0:2])
 }
 
+// GetFileHash calculates the hash of a file and returns it as a base64 encoded string.
+//
+// hash: The hash function to use for calculating the hash of the file.
+// file: The file to calculate the hash of.
+// Returns the base64 encoded hash of the file as a string.
 func GetFileHash(hash hash.Hash, file io.Reader) string {
+	// Copy the contents of the file to the hash function.
 	_, err := io.Copy(hash, file)
 	if err != nil {
+		// If there was an error copying the file, return an empty string.
 		return ""
 	}
 
-	return base64.URLEncoding.EncodeToString(hash.Sum(nil))
+	// Get the sum of the hash function.
+	sum := hash.Sum(nil)
 
+	// Encode the sum as a base64 string.
+	base64Hash := base64.URLEncoding.EncodeToString(sum)
+
+	// Return the base64 encoded hash.
+	return base64Hash
 }
