@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -68,6 +69,7 @@ func (s *HTTPFileStorageServer) StartServer() {
 		Handler:      r,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  15 * time.Second,
 	}
 
 	err := server.ListenAndServe()
@@ -78,6 +80,8 @@ func (s *HTTPFileStorageServer) StartServer() {
 }
 
 func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
+
+	waitCh := make(chan struct{})
 	go func() {
 
 		defer func() {
@@ -86,62 +90,69 @@ func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
 				c.AbortWithError(500, fmt.Errorf("internal server error"))
 			}
 		}()
-	}()
-	formFile, err := c.FormFile("file")
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error getting file: %v", err))
-		return
-	}
 
-	file, err := os.CreateTemp("", formFile.Filename)
+		defer func() { waitCh <- struct{}{} }()
 
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error creating temp file: %v", err))
-		return
-	}
-	multipartFile, err := formFile.Open()
+		slog.Info("POST /file")
+		formFile, err := c.FormFile("file")
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error getting file: %v", err))
+			return
+		}
 
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error opening file: %v", err))
-		return
-	}
-	_, err = io.Copy(file, multipartFile)
+		file, err := os.CreateTemp("", formFile.Filename)
 
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error saving file locally: %v", err))
-		return
-	}
-	defer func() {
-		multipartFile.Close()
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error creating temp file: %v", err))
+			return
+		}
+		multipartFile, err := formFile.Open()
+
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error opening file: %v", err))
+			return
+		}
+		_, err = io.Copy(file, multipartFile)
+
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error saving file locally: %v", err))
+			return
+		}
+		defer func() {
+			multipartFile.Close()
+			file.Close()
+			os.Remove(file.Name())
+		}()
+
+		h := sha256.New()
+		_, err = io.Copy(h, file)
+
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error computing hash: %v", err))
+			return
+		}
+		hash := fmt.Sprintf("%x", h.Sum(nil))
+		// Closing file because it will be read in SaveFileFromTemp
 		file.Close()
-		os.Remove(file.Name())
+
+		err = s.storer.SaveFileFromTemp(hash, file.Name())
+
+		if errors.Is(err, os.ErrExist) {
+			c.Status(200)
+			return
+		}
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error saving file: %v", err))
+			return
+		}
+		c.JSON(201, gin.H{"hash": hash})
 	}()
 
-	h := sha256.New()
-	_, err = io.Copy(h, file)
-
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error computing hash: %v", err))
-		return
-	}
-	hash := fmt.Sprintf("%x", h.Sum(nil))
-	// Closing file because it will be read in SaveFileFromTemp
-	file.Close()
-
-	err = s.storer.SaveFileFromTemp(hash, file.Name())
-
-	if errors.Is(err, os.ErrExist) {
-		c.Status(200)
-		return
-	}
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error saving file: %v", err))
-		return
-	}
-	c.JSON(201, gin.H{"hash": hash})
+	<-waitCh
 }
 
 func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
+	waitCh := make(chan struct{})
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -149,12 +160,18 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 				c.AbortWithError(500, fmt.Errorf("internal server error"))
 			}
 		}()
+
+		defer func() { waitCh <- struct{}{} }()
+
 		var hash hash
 		if err := c.ShouldBindUri(&hash); err != nil {
 			c.JSON(400, gin.H{"msg": err.Error()})
 			return
 		}
+		slog.Info("hash", slog.String("hash", hash.Hash))
 		filePath, err := s.storer.Read(hash.Hash)
+
+		slog.Info("filePath", slog.String("filePath", filePath))
 
 		if errors.Is(err, os.ErrNotExist) {
 			c.AbortWithError(404, fmt.Errorf("file not found"))
@@ -169,29 +186,45 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 		//Delete file from temp dir
 		os.Remove(filePath)
 	}()
+
+	<-waitCh
 }
 
 func (s *HTTPFileStorageServer) DeleteFile(c *gin.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
-			c.AbortWithError(500, fmt.Errorf("internal server error"))
+
+	waitCh := make(chan struct{})
+	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered in f", r)
+				c.AbortWithError(500, fmt.Errorf("internal server error"))
+			}
+		}()
+
+		defer func() { waitCh <- struct{}{} }()
+
+		var hash hash
+		if err := c.ShouldBindUri(&hash); err != nil {
+			c.JSON(400, gin.H{"msg": err.Error()})
+			return
 		}
+
+		if s.storer == nil {
+			c.AbortWithError(500, fmt.Errorf("storage not initialized"))
+			return
+		}
+
+		err := s.storer.Delete(hash.Hash)
+
+		if err != nil {
+			c.AbortWithError(500, fmt.Errorf("error deleting file: %v", err))
+			return
+		}
+		c.Status(200)
 	}()
-	hash := c.Request.PathValue("hash")
 
-	if s.storer == nil {
-		c.AbortWithError(500, fmt.Errorf("storage not initialized"))
-		return
-	}
-
-	err := s.storer.Delete(hash)
-
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("error deleting file: %v", err))
-		return
-	}
-	c.Status(200)
+	<-waitCh
 }
 
 func NewHTTPFileStorageServer(storer storage.Storer, config *Config) (FileStorageServer, error) {

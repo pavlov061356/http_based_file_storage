@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -178,12 +179,12 @@ func (s *Storage) Read(hash string) (string, error) {
 	exists, err := s.Exists(hash)
 	if err != nil {
 		// If there was an error while checking the file, return the error
-		return "", err
+		return "", fmt.Errorf("error checking if file exists: %v", err)
 	}
 
 	// If the file doesn't exist, return nil
 	if !exists {
-		return "", os.ErrExist
+		return "", os.ErrNotExist
 	}
 	mux.Lock()
 
@@ -191,27 +192,27 @@ func (s *Storage) Read(hash string) (string, error) {
 
 	if err != nil {
 		// If there was an error while opening the file, return the error
-		return "", err
+		return "", fmt.Errorf("error opening file: %v", err)
 	}
 	defer file.Close()
 
 	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating temp dir: %v", err)
 	}
 	tempFilePath := filepath.Join(tempDir, hash)
 
 	temFile, err := os.Create(tempFilePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating temp file: %v", err)
 	}
 	defer temFile.Close()
 
 	_, err = io.Copy(temFile, file)
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error copying file: %v", err)
 	}
 
 	mux.Unlock()

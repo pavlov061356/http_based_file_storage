@@ -28,7 +28,7 @@ func TestSaveFile(t *testing.T) {
 		&Config{
 			Host:        "localhost",
 			Port:        8080,
-			StoragePath: ".",
+			StoragePath: "/tmp",
 		},
 	)
 	if err != nil {
@@ -87,7 +87,7 @@ func TestSaveAlreadySavedFile(t *testing.T) {
 		&Config{
 			Host:        "localhost",
 			Port:        8080,
-			StoragePath: ".",
+			StoragePath: "/tmp",
 		},
 	)
 	if err != nil {
@@ -148,7 +148,7 @@ func TestSaveFileWithEmptyFile(t *testing.T) {
 		&Config{
 			Host:        "localhost",
 			Port:        8080,
-			StoragePath: ".",
+			StoragePath: "/tmp",
 		},
 	)
 	if err != nil {
@@ -207,7 +207,7 @@ func TestGetFile(t *testing.T) {
 		&Config{
 			Host:        "localhost",
 			Port:        8080,
-			StoragePath: ".",
+			StoragePath: "/tmp",
 		},
 	)
 	if err != nil {
@@ -275,7 +275,7 @@ func TestGetFileONonExistentFile(t *testing.T) {
 		&Config{
 			Host:        "localhost",
 			Port:        8080,
-			StoragePath: ".",
+			StoragePath: "/tmp",
 		},
 	)
 	if err != nil {
@@ -286,6 +286,109 @@ func TestGetFileONonExistentFile(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	req, _ := http.NewRequest("GET", "/file/test", nil)
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 404, w.Code)
+}
+
+func TestDeleteFile(t *testing.T) {
+	os.RemoveAll("/tmp/store")
+	storage, err := storage.NewStorage("/tmp")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewHTTPFileStorageServer(
+		storage,
+		&Config{
+			Host:        "localhost",
+			Port:        8080,
+			StoragePath: "/tmp",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := server.setupRouter()
+
+	w := httptest.NewRecorder()
+
+	b := new(bytes.Buffer)
+	multipartWriter := multipart.NewWriter(b)
+
+	part, err := multipartWriter.CreateFormFile("file", "test")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := os.CreateTemp("", "test")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = file.Write([]byte("test"))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = io.Copy(part, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multipartWriter.Close()
+
+	req, _ := http.NewRequest("POST", "/file", b)
+	req.Header.Add("Content-Type", multipartWriter.FormDataContentType())
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 201, w.Code)
+
+	var response map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&response)
+
+	w = httptest.NewRecorder()
+
+	req, _ = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 200, w.Code)
+
+	w = httptest.NewRecorder()
+
+	req, _ = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 200, w.Code)
+}
+
+func TestDeleteWithEmptyHash(t *testing.T) {
+	os.RemoveAll("/tmp/store")
+	storage, err := storage.NewStorage("/tmp")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewHTTPFileStorageServer(
+		storage,
+		&Config{
+			Host:        "localhost",
+			Port:        8080,
+			StoragePath: "/tmp",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := server.setupRouter()
+
+	w := httptest.NewRecorder()
+
+	req, _ := http.NewRequest("DELETE", "/file/", nil)
+
 	r.ServeHTTP(w, req)
 	assert.Equal(t, 404, w.Code)
 }
