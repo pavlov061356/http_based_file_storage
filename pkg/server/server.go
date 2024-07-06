@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pavlov061356/http_based_file_storage/internal/helpers"
 	"github.com/pavlov061356/http_based_file_storage/pkg/storage"
 )
 
@@ -234,14 +235,12 @@ func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
 			os.Remove(file.Name())
 		}()
 
-		// Compute the hash of the temporary file
-		h := sha256.New()
-		_, err = io.Copy(h, file)
-		if err != nil {
+		hash := helpers.GetFileHash(sha256.New(), file)
+
+		if hash == "" {
 			c.AbortWithError(500, fmt.Errorf("error computing hash: %v", err))
 			return
 		}
-		hash := fmt.Sprintf("%x", h.Sum(nil))
 
 		// Close the temporary file because it will be read in SaveFileFromTemp
 		file.Close()
@@ -309,6 +308,30 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 		} else if err != nil {
 			// Return error 500 Internal Server Error if an internal error occurs
 			c.AbortWithError(500, fmt.Errorf("error reading file: %v", err))
+			return
+		}
+
+		file, err := os.Open(filePath)
+
+		if err != nil {
+			// Return error 500 Internal Server Error if an internal error occurs
+			c.AbortWithError(500, fmt.Errorf("error opening file: %v", err))
+			return
+		}
+
+		computedHash := helpers.GetFileHash(sha256.New(), file)
+
+		if computedHash == "" {
+			c.AbortWithError(500, fmt.Errorf("error computing hash: %v", err))
+			return
+		}
+
+		if hash.Hash != computedHash {
+			// Return error 500 with text "File is corrupted" if hash does not match
+			// Deletes file after that
+			c.AbortWithError(500, fmt.Errorf("File is corrupted"))
+			file.Close()
+			os.Remove(filePath)
 			return
 		}
 
