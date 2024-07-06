@@ -340,7 +340,11 @@ func TestDeleteFile(t *testing.T) {
 	}
 	multipartWriter.Close()
 
-	req, _ := http.NewRequest("POST", "/file", b)
+	req, err := http.NewRequest("POST", "/file", b)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Header.Add("Content-Type", multipartWriter.FormDataContentType())
 
 	r.ServeHTTP(w, req)
@@ -351,15 +355,19 @@ func TestDeleteFile(t *testing.T) {
 
 	w = httptest.NewRecorder()
 
-	req, _ = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
-
+	req, err = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r.ServeHTTP(w, req)
 	assert.Equal(t, 200, w.Code)
 
 	w = httptest.NewRecorder()
 
-	req, _ = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
-
+	req, err = http.NewRequest("DELETE", "/file/"+response["hash"].(string), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r.ServeHTTP(w, req)
 	assert.Equal(t, 200, w.Code)
 }
@@ -387,7 +395,11 @@ func TestDeleteWithEmptyHash(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	req, _ := http.NewRequest("DELETE", "/file/", nil)
+	req, err := http.NewRequest("DELETE", "/file/", nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r.ServeHTTP(w, req)
 	assert.Equal(t, 404, w.Code)

@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"encoding/base64"
 	"hash"
 	"io"
 	"path/filepath"
@@ -35,5 +36,6 @@ func GetFileHash(hash hash.Hash, file io.Reader) string {
 		return ""
 	}
 
-	return string(hash.Sum(nil))
+	return base64.URLEncoding.EncodeToString(hash.Sum(nil))
+
 }
