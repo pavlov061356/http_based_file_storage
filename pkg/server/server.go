@@ -1,7 +1,10 @@
 package server
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"io"
@@ -245,6 +248,13 @@ func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
 		// Close the temporary file because it will be read in SaveFileFromTemp
 		file.Close()
 
+		err = checkHashFromRequest(file.Name(), c)
+
+		if err != nil {
+			c.AbortWithError(412, fmt.Errorf("error checking hash: %v", err))
+			return
+		}
+
 		// Run all Pre-Save callbacks
 		s.runCallbacks(&s.preSaveCallbacks, hash, file.Name())
 
@@ -481,18 +491,97 @@ func (s *HTTPFileStorageServer) runCallbacks(callbacks *[]func(hash string, file
 
 }
 
+// RegisterGETHandler registers a handler function for the GET method on the
+// specified path.
+//
+// Parameters:
+// - path: the path to register the handler on
+// - handler: the function to handle GET requests on the specified path
 func (s *HTTPFileStorageServer) RegisterGETHandler(path string, handler func(c *gin.Context)) {
 	s.engine.GET(path, handler)
 }
 
+// RegisterDELETEHandler registers a handler function for the DELETE method on the
+// specified path.
+//
+// Parameters:
+// - path: the path to register the handler on
+// - handler: the function to handle DELETE requests on the specified path
 func (s *HTTPFileStorageServer) RegisterDELETEHandler(path string, handler func(c *gin.Context)) {
 	s.engine.DELETE(path, handler)
 }
 
+// RegisterPOSTHandler registers a handler function for the POST method on the
+// specified path.
+//
+// Parameters:
+// - path: the path to register the handler on
+// - handler: the function to handle POST requests on the specified path
 func (s *HTTPFileStorageServer) RegisterPOSTHandler(path string, handler func(c *gin.Context)) {
 	s.engine.POST(path, handler)
 }
 
+// AddMiddleware adds a middleware function to the Gin engine.
+//
+// Parameters:
+// - middleware: the function to add as middleware
 func (s *HTTPFileStorageServer) AddMiddleware(middleware gin.HandlerFunc) {
 	s.engine.Use(middleware)
+}
+
+// checkHashFromRequest checks the hash of the file from the request headers.
+//
+// Parameters:
+// - filePath: the path of the file.
+// - c: the gin context.
+//
+// Returns:
+// - an error if the hash does not match, nil otherwise.
+func checkHashFromRequest(filePath string, c *gin.Context) error {
+	// Get the MD5 hash from the request header.
+	md5Header := c.GetHeader("MD5")
+
+	// Open the file.
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("error opening file: %v", err)
+	}
+	defer file.Close()
+
+	// Check the MD5 hash.
+	if md5Header != "" {
+		hash := helpers.GetFileHash(md5.New(), file)
+		if md5Header != hash {
+			return fmt.Errorf("MD5 hash does not match")
+		}
+	}
+
+	// Check the SHA256 hash.
+	sha256Header := c.GetHeader("SHA256")
+	if sha256Header != "" {
+		hash := helpers.GetFileHash(sha256.New(), file)
+		if sha256Header != hash {
+			return fmt.Errorf("SHA256 hash does not match")
+		}
+	}
+
+	// Check the SHA512 hash.
+	sha512Header := c.GetHeader("SHA512")
+	if sha512Header != "" {
+		hash := helpers.GetFileHash(sha512.New(), file)
+		if sha512Header != hash {
+			return fmt.Errorf("SHA512 hash does not match")
+		}
+	}
+
+	// Check the SHA1 hash.
+	sha1Header := c.GetHeader("SHA1")
+	if sha1Header != "" {
+		hash := helpers.GetFileHash(sha1.New(), file)
+		if sha1Header != hash {
+			return fmt.Errorf("SHA1 hash does not match")
+		}
+	}
+
+	return nil
 }
