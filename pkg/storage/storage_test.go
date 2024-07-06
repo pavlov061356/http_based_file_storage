@@ -31,9 +31,8 @@ func TestStorageCreate(t *testing.T) {
 // and saving a file with a hash that already exists in the storage.
 func TestStorageSaveFile(t *testing.T) {
 
-	tempDir := os.TempDir()
 	// Create a new Storage instance with the specified base path.
-	storage, err := NewStorage(tempDir)
+	storage, err := NewStorage("/tmp")
 
 	// Assert that there is no error while creating the Storage instance.
 	assert.NoError(t, err, "Error while creating Storage instance")
@@ -46,7 +45,7 @@ func TestStorageSaveFile(t *testing.T) {
 	assert.NoError(t, err, "Error while saving file with a new hash")
 
 	// Assert that the file was saved successfully.
-	filePath := helpers.GetFilePath(tempDir, "hash")
+	filePath := helpers.GetFilePath("/tmp", "hash")
 	_, err = os.Stat(filePath)
 	assert.NoError(t, err, "File was not saved successfully")
 

@@ -1,6 +1,9 @@
 package helpers
 
 import (
+	"encoding/base64"
+	"hash"
+	"io"
 	"path/filepath"
 )
 
@@ -25,4 +28,14 @@ func GetFileParentPath(basePath string, hash string) string {
 	// the first two characters of the hash value.
 	// This is the parent directory where the file with the given hash will be stored.
 	return filepath.Join(basePath, "store", hash[0:2])
+}
+
+func GetFileHash(hash hash.Hash, file io.Reader) string {
+	_, err := io.Copy(hash, file)
+	if err != nil {
+		return ""
+	}
+
+	return base64.URLEncoding.EncodeToString(hash.Sum(nil))
+
 }
