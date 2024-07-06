@@ -20,7 +20,6 @@ import (
 )
 
 // TODO: graceful shutdown with context
-// TODO: check file hash on GET
 // TODO: additional hash check on POST with user provided hashing algs
 
 type FileStorageServer interface {
@@ -77,7 +76,7 @@ type FileStorageServer interface {
 	// This function is thread-safe.
 	RegisterPreSaveCallback(callback func(hash string, filePath string) error)
 
-	// RegisterPostSaveCallback registers a callback function to be executed after
+	// RegisterPOSTSaveCallback registers a callback function to be executed after
 	// a file is successfully saved.
 	//
 	// The callback function takes two parameters: the hash of the saved file and
@@ -85,7 +84,7 @@ type FileStorageServer interface {
 	// executing the callback.
 	//
 	// This function is thread-safe.
-	RegisterPostSaveCallback(callback func(hash string, filePath string) error)
+	RegisterPOSTSaveCallback(callback func(hash string, filePath string) error)
 
 	// RegisterGETHandler registers a handler function for the GET method on the
 	// specified path.
@@ -343,6 +342,7 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 		}
 
 		if hash.Hash != computedHash {
+			// TODO обсудить варианты возврата ошибок
 			// Return error 500 with text "File is corrupted" if hash does not match
 			// Deletes file after that
 			c.AbortWithError(500, fmt.Errorf("File is corrupted"))
@@ -459,7 +459,7 @@ func (s *HTTPFileStorageServer) RegisterPreSaveCallback(callback func(hash strin
 	s.registerCallback(&s.preSaveCallbacks, callback)
 }
 
-// RegisterPostSaveCallback registers a callback function to be executed after
+// RegisterPOSTSaveCallback registers a callback function to be executed after
 // a file is successfully saved.
 //
 // The callback function takes two parameters: the hash of the saved file and
@@ -470,7 +470,7 @@ func (s *HTTPFileStorageServer) RegisterPreSaveCallback(callback func(hash strin
 //
 // Parameters:
 // - callback: the callback function to register.
-func (s *HTTPFileStorageServer) RegisterPostSaveCallback(callback func(hash string, filePath string) error) {
+func (s *HTTPFileStorageServer) RegisterPOSTSaveCallback(callback func(hash string, filePath string) error) {
 	s.registerCallback(&s.postSaveCallbacks, callback)
 }
 
