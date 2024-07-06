@@ -24,28 +24,33 @@ import (
 // TODO: additional hash check on POST with user provided hashing algs
 
 type FileStorageServer interface {
-	// TODO: add methods below:
-	// 1. AddFile
-	// Get hash of file and save it to storage
-	// OPtional: check hashes sent by client and compute hashes of uploaded file
-	// if they are not equal, return error 412 Precondition Failed
-	// Successful code is 201 Created
-	// If an internal error occurs, return error 500 Internal Server Error
 
+	// SaveFile handles the HTTP POST request to save a file to the storage.
+	// It saves the file to a temporary location, computes its hash, and saves it to the storage.
+	// If an error occurs during the process, it returns an error 500 Internal Server Error.
+	// If the file already exists in the storage, it returns a status code 200 OK.
+	// If the file is successfully saved, it returns a status code 201 Created and the hash of the file.
+	// Support checking user-provided hashes in headers on request in camel case
+	// Hash checking supports MD5, SHA256, SHA512, SHA1 hashes
 	SaveFile(c *gin.Context)
-	// 2. SendFile
-	// Get file from storage and return it
-	// Check hash sent by client and compute hash of downloaded file
-	// if they isn't any file with given hash return error 404 Not Found
-	// Successful code is 200 OK
-	// If an internal error occurs, return error 500 Internal Server Error
+
+	// SendFile handles the HTTP GET request to retrieve a file from the storage.
+	// It retrieves the file from the storage based on the provided hash and sends it back as the response.
+	// If the file is not found in the storage, it returns an error 404 Not Found.
+	// If the file is successfully retrieved, it returns a status code 200 OK and the file.
+	// If an error occurs during the process, it returns an error 500 Internal Server Error.
+	//
+	// Parameters:
+	// - c: The Gin context object for handling the HTTP request and response.
 	SendFile(c *gin.Context)
-	// 3. DeleteFile
-	// Delete file from storage
-	// if they isn't any file with given hash return error 404 Not Found
-	// TODO: discuss 404
-	// Successful code is 200 OK
-	// If an internal error occurs, return error 500 Internal Server Error
+
+	// DeleteFile handles the HTTP DELETE request to delete a file from the storage.
+	// It checks if the file exists in the storage, and if so, deletes it.
+	// Returns 200 OK if the file is successfully deleted or if file does not exists.
+	// Returns an error 500 Internal Server Error if an internal error occurs.
+	//
+	// Parameters:
+	// - c: The Gin context object for handling the HTTP request and response.
 	DeleteFile(c *gin.Context)
 
 	// StartServer starts the HTTP server.
@@ -530,6 +535,8 @@ func (s *HTTPFileStorageServer) AddMiddleware(middleware gin.HandlerFunc) {
 }
 
 // checkHashFromRequest checks the hash of the file from the request headers.
+//
+// # Supports MD5 and SHA256, SHA512, SHA1 hashes
 //
 // Parameters:
 // - filePath: the path of the file.
