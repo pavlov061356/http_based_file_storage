@@ -336,6 +336,7 @@ func (s *HTTPFileStorageServer) SendFile(c *gin.Context) {
 
 		computedHash := helpers.GetFileHash(sha256.New(), file)
 
+		file.Close()
 		if computedHash == "" {
 			c.AbortWithError(500, fmt.Errorf("error computing hash: %v", err))
 			return
