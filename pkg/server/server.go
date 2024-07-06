@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,6 @@ import (
 
 // TODO: graceful shutdown with context
 // TODO: check file hash on GET
-// TODO: add pre- and post-callbacks on saving file
 // TODO: additional hash check on POST with user provided hashing algs
 
 type FileStorageServer interface {
@@ -47,11 +47,21 @@ type FileStorageServer interface {
 	StartServer()
 
 	setupRouter() *gin.Engine
+
+	RegisterPreSaveCallback(callback func(hash string, filePath string) error)
+
+	RegisterPostSaveCallback(callback func(hash string, filePath string) error)
 }
 
 type HTTPFileStorageServer struct {
 	storer storage.Storer
 	config *Config
+
+	mux sync.Mutex
+
+	preSaveCallbacks []func(hash string, filePath string) error
+
+	postSaveCallbacks []func(hash string, filePath string) error
 }
 
 type hash struct {
@@ -140,6 +150,9 @@ func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
 		// Closing file because it will be read in SaveFileFromTemp
 		file.Close()
 
+		// Run all Pre-Save callbacks
+		s.runCallbacks(&s.preSaveCallbacks, hash, file.Name())
+
 		err = s.storer.SaveFileFromTemp(hash, file.Name())
 
 		if errors.Is(err, os.ErrExist) {
@@ -150,6 +163,9 @@ func (s *HTTPFileStorageServer) SaveFile(c *gin.Context) {
 			c.AbortWithError(500, fmt.Errorf("error saving file: %v", err))
 			return
 		}
+
+		// Run all Post-Save callbacks
+		s.runCallbacks(&s.postSaveCallbacks, hash, file.Name())
 		c.JSON(201, gin.H{"hash": hash})
 	}()
 
@@ -243,5 +259,32 @@ func NewHTTPFileStorageServer(storer storage.Storer, config *Config) (FileStorag
 	return &HTTPFileStorageServer{
 		storer,
 		config,
+		sync.Mutex{},
+		[]func(hash string, filePath string) error{},
+		[]func(hash string, filePath string) error{},
 	}, nil
+}
+
+func (s *HTTPFileStorageServer) registerCallback(callbacks *[]func(hash string, filePath string) error, callback func(hash string, filePath string) error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	*callbacks = append(*callbacks, callback)
+}
+
+func (s *HTTPFileStorageServer) RegisterPreSaveCallback(callback func(hash string, filePath string) error) {
+	s.registerCallback(&s.preSaveCallbacks, callback)
+}
+
+func (s *HTTPFileStorageServer) RegisterPostSaveCallback(callback func(hash string, filePath string) error) {
+	s.registerCallback(&s.postSaveCallbacks, callback)
+}
+
+func (s *HTTPFileStorageServer) runCallbacks(callbacks *[]func(hash string, filePath string) error, hash string, filePath string) {
+
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	for _, callback := range *callbacks {
+		callback(hash, filePath)
+	}
+
 }
