@@ -14,6 +14,11 @@ import (
 	"github.com/pavlov061356/http_based_file_storage/pkg/storage"
 )
 
+// TODO: graceful shutdown with context
+// TODO: check file hash on GET
+// TODO: add pre- and post-callbacks on saving file
+// TODO: additional hash check on POST with user provided hashing algs
+
 type FileStorageServer interface {
 	// TODO: add methods below:
 	// 1. AddFile
