@@ -1,7 +1,17 @@
 package main
 
-func main() {
-	// TODO: add config in ENVS
+import (
+	"github.com/pavlov061356/http_based_file_storage/pkg/server"
+	"github.com/pavlov061356/http_based_file_storage/pkg/storage"
+)
 
-	// TODO: start server
+func main() {
+	config := server.ReadConfigFromEnv()
+	storage, err := storage.NewStorage(config.StoragePath)
+	server, err := server.NewHTTPFileStorageServer(storage, config)
+	if err != nil {
+		panic(err)
+	}
+
+	server.StartServer()
 }

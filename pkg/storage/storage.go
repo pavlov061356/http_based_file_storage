@@ -1,16 +1,14 @@
 package storage
 
 import (
-	"bufio"
-	"math"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/pavlov061356/http_based_file_storage/internal/helpers"
 )
-
-const maxBufferSize = 1024
 
 // Storer is an interface that defines the methods for file storage
 type Storer interface {
@@ -51,8 +49,6 @@ type Storage struct {
 	// basePath is the base directory where the files are stored.
 	basePath string
 
-	// TODO: could be made configurable
-	bufferSize int
 	// muxMap is a map of mutexes used to synchronize file access.
 	// The key is the hash of the file, and the value is the mutex associated with that hash.
 	muxMap map[string]*sync.Mutex
@@ -81,9 +77,8 @@ func NewStorage(basePath string) (Storer, error) {
 	}
 	// Return a new Storage instance
 	return &Storage{
-		basePath:   basePath,
-		muxMap:     make(map[string]*sync.Mutex),
-		bufferSize: maxBufferSize,
+		basePath: basePath,
+		muxMap:   make(map[string]*sync.Mutex),
 	}, nil
 }
 
@@ -124,10 +119,21 @@ func (s *Storage) SaveFileFromTemp(hash string, tmpFilePath string) error {
 	defer mux.Unlock()
 
 	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
+	filePathParentDir := helpers.GetFileParentPath(s.basePath, hash)
+	err := os.MkdirAll(filePathParentDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	_, err = os.Stat(filePath)
+
+	if err == nil {
+		return os.ErrExist
+	}
 
 	// Save the file by renaming the temporary file
-	err := os.Rename(tmpFilePath, filePath)
-	if err != nil && !os.IsNotExist(err) {
+	err = os.Rename(tmpFilePath, filePath)
+	if err != nil {
 		return err
 	}
 
@@ -151,7 +157,7 @@ func (s *Storage) saveFile(hash string, data []byte) error {
 	defer deleteMutexMapEntry(&s.muxMapLock, s.muxMap, hash)
 
 	err = os.WriteFile(filePath, data, 0644)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return err
 	}
 	return nil
@@ -173,12 +179,12 @@ func (s *Storage) Read(hash string) (string, error) {
 	exists, err := s.Exists(hash)
 	if err != nil {
 		// If there was an error while checking the file, return the error
-		return "", err
+		return "", fmt.Errorf("error checking if file exists: %v", err)
 	}
 
 	// If the file doesn't exist, return nil
 	if !exists {
-		return "", os.ErrExist
+		return "", os.ErrNotExist
 	}
 	mux.Lock()
 
@@ -186,41 +192,27 @@ func (s *Storage) Read(hash string) (string, error) {
 
 	if err != nil {
 		// If there was an error while opening the file, return the error
-		return "", err
+		return "", fmt.Errorf("error opening file: %v", err)
 	}
 	defer file.Close()
-	stat, err := file.Stat()
-
-	if err != nil {
-		return "", err
-	}
 
 	tempDir, err := os.MkdirTemp(os.TempDir(), hash)
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating temp dir: %v", err)
 	}
 	tempFilePath := filepath.Join(tempDir, hash)
 
 	temFile, err := os.Create(tempFilePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating temp file: %v", err)
 	}
 	defer temFile.Close()
 
-	// Read the file and write it to the temporary file
-	// The buffer size is computed for each file to check if file size is lower than the max buffer size
-	// to avoid getting buffer filled like this: [bytes, ... 0, 0, 0, 0, ...]
-	bufferSize := int(math.Min(float64(s.bufferSize), float64(stat.Size())))
-	buffer := make([]byte, bufferSize)
-	bufferedReader := bufio.NewReader(file)
+	_, err = io.Copy(temFile, file)
 
-	for {
-		_, err := bufferedReader.Read(buffer)
-		if err != nil {
-			break
-		}
-		temFile.Write(buffer)
+	if err != nil {
+		return "", fmt.Errorf("error copying file: %v", err)
 	}
 
 	mux.Unlock()
