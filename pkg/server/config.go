@@ -32,13 +32,13 @@ func ReadConfigFromEnv() *Config {
 	}
 
 	// Get the host address from the environment variable, default to "localhost"
-	host, exists := os.LookupEnv("host")
+	host, exists := os.LookupEnv("HOST")
 	if !exists {
 		host = "localhost"
 	}
 
 	// Get the port number from the environment variable, default to 8080
-	port, exists := os.LookupEnv("port")
+	port, exists := os.LookupEnv("PORT")
 	if !exists {
 		port = "8080"
 	}
@@ -48,7 +48,7 @@ func ReadConfigFromEnv() *Config {
 	}
 
 	// Get the storage path from the environment variable, default to "/tmp"
-	storagePath, exists := os.LookupEnv("storage_path")
+	storagePath, exists := os.LookupEnv("STORAGE_PATH")
 	if !exists {
 		storagePath = "/tmp"
 	}
